@@ -1,0 +1,50 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "clouddrive2-client"
+dynamic = ["version"]
+description = "CloudDrive2 gRPC Python client"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "DDSRem", email = "ddsrem@xnn.ee" },
+]
+keywords = ["clouddrive", "clouddrive2", "grpc", "client"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "grpcio",
+    "protobuf",
+]
+
+[project.urls]
+Homepage = "https://github.com/DDSRem-Dev/clouddrive2-client"
+Repository = "https://github.com/DDSRem-Dev/clouddrive2-client"
+Issues = "https://github.com/DDSRem-Dev/clouddrive2-client/issues"
+
+[tool.hatch.version]
+path = "src/clouddrive2_client/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/clouddrive2_client"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/clouddrive2_client/",
+    "README.md",
+    "LICENSE",
+    "pyproject.toml",
+]
