@@ -1,4 +1,5 @@
-from typing import List, Optional
+from collections import deque
+from typing import Any, Iterator, List, Optional, Tuple
 
 from grpc import insecure_channel
 
@@ -57,22 +58,65 @@ class CloudDriveClient:
         """
         return self.stub.GetSystemInfo(empty_pb2.Empty())
 
-    def get_sub_files(self, path: str, force_refresh: bool = False) -> List:
+    def get_sub_files(self, path: str, force_refresh: bool = False) -> Iterator:
         """
         列出目录中的文件。
 
         :param path: 目录路径
         :param force_refresh: 是否强制刷新缓存
-        :return: CloudDriveFile 列表
+        :yield: CloudDriveFile
         """
         request = clouddrive_pb2.ListSubFileRequest(
             path=path, forceRefresh=force_refresh
         )
         metadata = self._create_authorized_metadata()
-        files: List = []
         for response in self.stub.GetSubFiles(request, metadata=metadata):
-            files.extend(response.subFiles)
-        return files
+            for f in response.subFiles:
+                yield f
+
+    def walk(
+        self,
+        top: str,
+        min_depth: int = 0,
+        max_depth: int = -1,
+        refresh: bool = False,
+    ) -> Iterator[Tuple[str, Any]]:
+        """
+        BFS 遍历目录树
+
+        :param top: 根路径（目录）
+        :param min_depth: 最小深度，达到该深度后才可能 yield（0=含根）
+        :param max_depth: 最大深度，-1 表示不限制
+        :param refresh: 是否强制刷新目录缓存（传给 get_sub_files）
+        :yield: (path, CloudDriveFile)，path 为该条目的完整路径
+        """
+        dq: deque = deque()
+        push, pop = dq.append, dq.popleft
+        top_path = (top or "/").rstrip("/") or "/"
+        path = self.find_file_by_path(top_path)
+        if not path or not getattr(path, "fullPathName", None):
+            return
+        push((0, path))
+        while dq:
+            depth, path = pop()
+            path_str = path.fullPathName or top_path
+            if min_depth <= 0:
+                yield (path_str, path)
+                min_depth = 1
+            if depth == 0 and (
+                not getattr(path, "isDirectory", False) or (0 <= max_depth <= depth)
+            ):
+                return
+            depth += 1
+            dir_path = path_str if path_str.endswith("/") else (path_str + "/")
+            for child in self.get_sub_files(dir_path, force_refresh=refresh):
+                child_path = child.fullPathName or ""
+                if depth >= min_depth:
+                    yield (child_path, child)
+                if getattr(child, "isDirectory", False) and (
+                    max_depth < 0 or depth < max_depth
+                ):
+                    push((depth, child))
 
     def find_file_by_path(self, path: str):
         """
