@@ -74,6 +74,33 @@ class CloudDriveClient:
             for f in response.subFiles:
                 yield f
 
+    def get_search_results(
+        self,
+        path: str,
+        search_for: str,
+        force_refresh: bool = False,
+        fuzzy_match: bool = False,
+    ) -> Iterator:
+        """
+        在指定路径下搜索文件或目录。
+
+        :param path: 搜索根路径
+        :param search_for: 搜索关键词
+        :param force_refresh: 是否强制刷新缓存
+        :param fuzzy_match: 是否模糊匹配
+        :yield: CloudDriveFile
+        """
+        request = clouddrive_pb2.SearchRequest(
+            path=path,
+            searchFor=search_for,
+            forceRefresh=force_refresh,
+            fuzzyMatch=fuzzy_match,
+        )
+        metadata = self._create_authorized_metadata()
+        for response in self.stub.GetSearchResults(request, metadata=metadata):
+            for f in response.subFiles:
+                yield f
+
     def walk(
         self,
         top: str,
@@ -140,6 +167,28 @@ class CloudDriveClient:
         metadata = self._create_authorized_metadata()
         return self.stub.GetSpaceInfo(request, metadata=metadata)
 
+    def get_file_detail_properties(self, path: str):
+        """
+        获取文件或目录的详细属性。
+
+        :param path: 文件或目录路径
+        :return: FileDetailProperties
+        """
+        request = clouddrive_pb2.FileRequest(path=path)
+        metadata = self._create_authorized_metadata()
+        return self.stub.GetFileDetailProperties(request, metadata=metadata)
+
+    def get_cloud_memberships(self, path: str = "/"):
+        """
+        获取指定路径对应云盘的成员/权限信息。
+
+        :param path: 路径，通常为根或挂载点
+        :return: CloudMemberships
+        """
+        request = clouddrive_pb2.FileRequest(path=path)
+        metadata = self._create_authorized_metadata()
+        return self.stub.GetCloudMemberships(request, metadata=metadata)
+
     def create_folder(self, parent_path: str, folder_name: str):
         """
         在父目录下创建文件夹。
@@ -154,9 +203,62 @@ class CloudDriveClient:
         metadata = self._create_authorized_metadata()
         return self.stub.CreateFolder(request, metadata=metadata)
 
+    def create_encrypted_folder(
+        self,
+        parent_path: str,
+        folder_name: str,
+        password: str,
+        save_password: bool = True,
+    ):
+        """
+        在父目录下创建加密文件夹。
+
+        :param parent_path: 父目录路径
+        :param folder_name: 新文件夹名称
+        :param password: 加密密码
+        :param save_password: 是否保存密码到本地（否则重启后需重新解锁）
+        :return: CreateFolderResult
+        """
+        request = clouddrive_pb2.CreateEncryptedFolderRequest(
+            parentPath=parent_path,
+            folderName=folder_name,
+            password=password,
+            savePassword=save_password,
+        )
+        metadata = self._create_authorized_metadata()
+        return self.stub.CreateEncryptedFolder(request, metadata=metadata)
+
+    def unlock_encrypted_file(
+        self, path: str, password: str, permanent_unlock: bool = False
+    ):
+        """
+        解锁加密文件或文件夹。
+
+        :param path: 加密文件或文件夹路径
+        :param password: 密码
+        :param permanent_unlock: 是否永久解锁（保存密码，重启后无需再输）
+        :return: FileOperationResult
+        """
+        request = clouddrive_pb2.UnlockEncryptedFileRequest(
+            path=path, password=password, permanentUnlock=permanent_unlock
+        )
+        metadata = self._create_authorized_metadata()
+        return self.stub.UnlockEncryptedFile(request, metadata=metadata)
+
+    def lock_encrypted_file(self, path: str):
+        """
+        锁定加密文件或文件夹（清除已保存的密码）。
+
+        :param path: 加密文件或文件夹路径
+        :return: FileOperationResult
+        """
+        request = clouddrive_pb2.FileRequest(path=path)
+        metadata = self._create_authorized_metadata()
+        return self.stub.LockEncryptedFile(request, metadata=metadata)
+
     def delete_file(self, file_path: str):
         """
-        删除文件或文件夹。
+        删除文件或文件夹（放入回收站，若云盘支持）。
 
         :param file_path: 文件或文件夹路径
         :return: FileOperationResult
@@ -164,6 +266,39 @@ class CloudDriveClient:
         request = clouddrive_pb2.FileRequest(path=file_path)
         metadata = self._create_authorized_metadata()
         return self.stub.DeleteFile(request, metadata=metadata)
+
+    def delete_file_permanently(self, file_path: str):
+        """
+        永久删除文件或文件夹（不经过回收站）。
+
+        :param file_path: 文件或文件夹路径
+        :return: FileOperationResult
+        """
+        request = clouddrive_pb2.FileRequest(path=file_path)
+        metadata = self._create_authorized_metadata()
+        return self.stub.DeleteFilePermanently(request, metadata=metadata)
+
+    def delete_files(self, paths: List[str]):
+        """
+        批量删除文件或文件夹（放入回收站）。
+
+        :param paths: 路径列表
+        :return: FileOperationResult
+        """
+        request = clouddrive_pb2.MultiFileRequest(path=paths)
+        metadata = self._create_authorized_metadata()
+        return self.stub.DeleteFiles(request, metadata=metadata)
+
+    def delete_files_permanently(self, paths: List[str]):
+        """
+        批量永久删除文件或文件夹。
+
+        :param paths: 路径列表
+        :return: FileOperationResult
+        """
+        request = clouddrive_pb2.MultiFileRequest(path=paths)
+        metadata = self._create_authorized_metadata()
+        return self.stub.DeleteFilesPermanently(request, metadata=metadata)
 
     def rename_file(self, file_path: str, new_name: str):
         """
@@ -178,6 +313,22 @@ class CloudDriveClient:
         )
         metadata = self._create_authorized_metadata()
         return self.stub.RenameFile(request, metadata=metadata)
+
+    def rename_files(self, renames: List[Tuple[str, str]]):
+        """
+        批量重命名文件或目录。
+
+        :param renames: [(当前路径, 新名称), ...]
+        :return: FileOperationResult
+        """
+        request = clouddrive_pb2.RenameFilesRequest(
+            renameFiles=[
+                clouddrive_pb2.RenameFileRequest(theFilePath=p, newName=n)
+                for p, n in renames
+            ]
+        )
+        metadata = self._create_authorized_metadata()
+        return self.stub.RenameFiles(request, metadata=metadata)
 
     def move_file(self, the_file_paths: List[str], dest_path: str):
         """
@@ -280,6 +431,12 @@ class CloudDriveClient:
         """
         响应服务端的读数据请求，上传文件块。
 
+        :param upload_id: 上传会话 ID
+        :param offset: 偏移量
+        :param length: 请求长度
+        :param data: 文件块数据
+        :param is_last_chunk: 是否为最后一块
+        :param lazy_read: 是否延迟读取
         :return: RemoteReadDataReply (success, error_message, bytes_received, is_last_chunk)
         """
         request = clouddrive_pb2.RemoteReadDataUpload(
@@ -318,6 +475,9 @@ class CloudDriveClient:
         """
         上报本地计算的哈希进度或结果。
 
+        :param upload_id: 上传会话 ID
+        :param bytes_hashed: 已哈希字节数
+        :param total_bytes: 总字节数
         :param hash_type: CloudDriveFile.HashType (1=Md5, 2=Sha1)
         :param hash_value: 最终哈希值（十六进制字符串），可选
         :param block_hashes: 分块 MD5 等，可选
@@ -332,3 +492,255 @@ class CloudDriveClient:
         )
         metadata = self._create_authorized_metadata()
         return self.stub.RemoteHashProgress(request, metadata=metadata)
+
+    def get_all_tasks_count(self):
+        """
+        获取所有任务数量（下载、上传、复制等）。
+
+        :return: GetAllTasksCountResult
+        """
+        metadata = self._create_authorized_metadata()
+        return self.stub.GetAllTasksCount(empty_pb2.Empty(), metadata=metadata)
+
+    def get_download_file_count(self):
+        """
+        获取当前下载任务数量。
+
+        :return: GetDownloadFileCountResult
+        """
+        metadata = self._create_authorized_metadata()
+        return self.stub.GetDownloadFileCount(empty_pb2.Empty(), metadata=metadata)
+
+    def get_download_file_list(self):
+        """
+        获取下载任务列表。
+
+        :return: GetDownloadFileListResult
+        """
+        metadata = self._create_authorized_metadata()
+        return self.stub.GetDownloadFileList(empty_pb2.Empty(), metadata=metadata)
+
+    def get_upload_file_count(self):
+        """
+        获取当前上传任务数量。
+
+        :return: GetUploadFileCountResult
+        """
+        metadata = self._create_authorized_metadata()
+        return self.stub.GetUploadFileCount(empty_pb2.Empty(), metadata=metadata)
+
+    def get_upload_file_list(
+        self,
+        get_all: bool = True,
+        items_per_page: int = 0,
+        page_number: int = 0,
+    ):
+        """
+        获取上传任务列表。
+
+        :param get_all: 是否获取全部（为 True 时忽略分页）
+        :param items_per_page: 每页条数
+        :param page_number: 页码
+        :return: GetUploadFileListResult
+        """
+        request = clouddrive_pb2.GetUploadFileListRequest(
+            getAll=get_all,
+            itemsPerPage=items_per_page,
+            pageNumber=page_number,
+        )
+        metadata = self._create_authorized_metadata()
+        return self.stub.GetUploadFileList(request, metadata=metadata)
+
+    def cancel_all_upload_files(self) -> None:
+        """
+        取消所有上传任务。
+        """
+        metadata = self._create_authorized_metadata()
+        self.stub.CancelAllUploadFiles(empty_pb2.Empty(), metadata=metadata)
+
+    def cancel_upload_files(self, keys: List[str]) -> None:
+        """
+        取消指定 key 的上传任务。
+
+        :param keys: 上传任务 key 列表（来自 get_upload_file_list）
+        """
+        request = clouddrive_pb2.MultpleUploadFileKeyRequest(keys=keys)
+        metadata = self._create_authorized_metadata()
+        self.stub.CancelUploadFiles(request, metadata=metadata)
+
+    def pause_all_upload_files(self) -> None:
+        """
+        暂停所有上传任务。
+        """
+        metadata = self._create_authorized_metadata()
+        self.stub.PauseAllUploadFiles(empty_pb2.Empty(), metadata=metadata)
+
+    def pause_upload_files(self, keys: List[str]) -> None:
+        """
+        暂停指定 key 的上传任务。
+
+        :param keys: 上传任务 key 列表
+        """
+        request = clouddrive_pb2.MultpleUploadFileKeyRequest(keys=keys)
+        metadata = self._create_authorized_metadata()
+        self.stub.PauseUploadFiles(request, metadata=metadata)
+
+    def resume_all_upload_files(self) -> None:
+        """
+        恢复所有上传任务。
+        """
+        metadata = self._create_authorized_metadata()
+        self.stub.ResumeAllUploadFiles(empty_pb2.Empty(), metadata=metadata)
+
+    def resume_upload_files(self, keys: List[str]) -> None:
+        """
+        恢复指定 key 的上传任务。
+
+        :param keys: 上传任务 key 列表
+        """
+        request = clouddrive_pb2.MultpleUploadFileKeyRequest(keys=keys)
+        metadata = self._create_authorized_metadata()
+        self.stub.ResumeUploadFiles(request, metadata=metadata)
+
+    def get_copy_tasks(self):
+        """
+        获取复制任务列表。
+
+        :return: GetCopyTaskResult
+        """
+        metadata = self._create_authorized_metadata()
+        return self.stub.GetCopyTasks(empty_pb2.Empty(), metadata=metadata)
+
+    def get_merge_tasks(self):
+        """
+        获取合并任务列表。
+
+        :return: GetMergeTasksResult
+        """
+        metadata = self._create_authorized_metadata()
+        return self.stub.GetMergeTasks(empty_pb2.Empty(), metadata=metadata)
+
+    def cancel_merge_task(self, source_path: str, dest_path: str) -> None:
+        """
+        取消合并任务。
+
+        :param source_path: 源路径
+        :param dest_path: 目标路径
+        """
+        request = clouddrive_pb2.CancelMergeTaskRequest(
+            sourcePath=source_path, destPath=dest_path
+        )
+        metadata = self._create_authorized_metadata()
+        self.stub.CancelMergeTask(request, metadata=metadata)
+
+    def cancel_copy_task(self, source_path: str, dest_path: str) -> None:
+        """
+        取消复制任务。
+
+        :param source_path: 源路径
+        :param dest_path: 目标路径
+        """
+        request = clouddrive_pb2.CopyTaskRequest(
+            sourcePath=source_path, destPath=dest_path
+        )
+        metadata = self._create_authorized_metadata()
+        self.stub.CancelCopyTask(request, metadata=metadata)
+
+    def pause_copy_task(
+        self, source_path: str, dest_path: str, pause: bool = True
+    ) -> None:
+        """
+        暂停或恢复单个复制任务。
+
+        :param source_path: 源路径
+        :param dest_path: 目标路径
+        :param pause: True 为暂停，False 为恢复
+        """
+        request = clouddrive_pb2.PauseCopyTaskRequest(
+            sourcePath=source_path, destPath=dest_path, pause=pause
+        )
+        metadata = self._create_authorized_metadata()
+        self.stub.PauseCopyTask(request, metadata=metadata)
+
+    def restart_copy_task(self, source_path: str, dest_path: str) -> None:
+        """
+        重启复制任务。
+
+        :param source_path: 源路径
+        :param dest_path: 目标路径
+        """
+        request = clouddrive_pb2.CopyTaskRequest(
+            sourcePath=source_path, destPath=dest_path
+        )
+        metadata = self._create_authorized_metadata()
+        self.stub.RestartCopyTask(request, metadata=metadata)
+
+    def remove_completed_copy_tasks(self) -> None:
+        """
+        移除已完成的复制任务记录。
+        """
+        metadata = self._create_authorized_metadata()
+        self.stub.RemoveCompletedCopyTasks(empty_pb2.Empty(), metadata=metadata)
+
+    def remove_all_copy_tasks(self):
+        """
+        移除所有复制任务。
+
+        :return: BatchOperationResult
+        """
+        metadata = self._create_authorized_metadata()
+        return self.stub.RemoveAllCopyTasks(empty_pb2.Empty(), metadata=metadata)
+
+    def remove_copy_tasks(self, task_keys: List[str]):
+        """
+        移除指定 key 的复制任务。
+
+        :param task_keys: 任务 key 列表（来自 get_copy_tasks）
+        :return: BatchOperationResult
+        """
+        request = clouddrive_pb2.CopyTaskBatchRequest(taskKeys=task_keys)
+        metadata = self._create_authorized_metadata()
+        return self.stub.RemoveCopyTasks(request, metadata=metadata)
+
+    def pause_all_copy_tasks(self, pause: bool = True):
+        """
+        暂停或恢复所有复制任务。
+
+        :param pause: True 为暂停，False 为恢复
+        :return: BatchOperationResult
+        """
+        request = clouddrive_pb2.PauseAllCopyTasksRequest(pause=pause)
+        metadata = self._create_authorized_metadata()
+        return self.stub.PauseAllCopyTasks(request, metadata=metadata)
+
+    def pause_copy_tasks(self, task_keys: List[str], pause: bool = True):
+        """
+        暂停或恢复指定复制任务。
+
+        :param task_keys: 任务 key 列表
+        :param pause: True 为暂停，False 为恢复
+        :return: BatchOperationResult
+        """
+        request = clouddrive_pb2.PauseCopyTasksRequest(taskKeys=task_keys, pause=pause)
+        metadata = self._create_authorized_metadata()
+        return self.stub.PauseCopyTasks(request, metadata=metadata)
+
+    def resume_all_copy_tasks(self):
+        """
+        恢复所有复制任务。
+
+        :return: BatchOperationResult
+        """
+        metadata = self._create_authorized_metadata()
+        return self.stub.ResumeAllCopyTasks(empty_pb2.Empty(), metadata=metadata)
+
+    def resume_copy_tasks(self, task_keys: List[str]):
+        """
+        恢复指定复制任务。
+
+        :param task_keys: 任务 key 列表
+        :return: BatchOperationResult
+        """
+        request = clouddrive_pb2.CopyTaskBatchRequest(taskKeys=task_keys)
+        metadata = self._create_authorized_metadata()
+        return self.stub.ResumeCopyTasks(request, metadata=metadata)
