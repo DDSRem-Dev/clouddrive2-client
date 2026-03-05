@@ -128,7 +128,7 @@ class CloudDriveClient:
             depth, path = pop()
             path_str = path.fullPathName or top_path
             if min_depth <= 0:
-                yield (path_str, path)
+                yield path_str, path
                 min_depth = 1
             if depth == 0 and (
                 not getattr(path, "isDirectory", False) or (0 <= max_depth <= depth)
@@ -139,7 +139,7 @@ class CloudDriveClient:
             for child in self.get_sub_files(dir_path, force_refresh=refresh):
                 child_path = child.fullPathName or ""
                 if depth >= min_depth:
-                    yield (child_path, child)
+                    yield child_path, child
                 if getattr(child, "isDirectory", False) and (
                     max_depth < 0 or depth < max_depth
                 ):
@@ -408,7 +408,7 @@ class CloudDriveClient:
         metadata = self._create_authorized_metadata()
         return self.stub.StartRemoteUpload(request, metadata=metadata)
 
-    def remote_upload_channel(self, device_id: str = "moviepilot"):
+    def remote_upload_channel(self, device_id: str = "clouddrive2_client"):
         """
         打开远程上传通道，服务端通过流下发 read_data / hash_data / status_changed。
 
