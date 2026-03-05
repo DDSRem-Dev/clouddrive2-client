@@ -4,7 +4,7 @@
 [![Python version](https://img.shields.io/pypi/pyversions/clouddrive2-client)](https://pypi.org/project/clouddrive2-client/)
 [![License](https://img.shields.io/github/license/DDSRem-Dev/clouddrive2-client)](./LICENSE)
 
-CloudDrive2 gRPC Python 客户端库。
+CloudDrive2 gRPC Python 客户端库。`CloudDriveClient` 提供 **55** 个对外接口，覆盖认证、文件/目录操作、远程上传、下载与任务管理等能力。
 
 ## 安装
 
