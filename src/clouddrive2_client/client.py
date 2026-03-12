@@ -1,5 +1,5 @@
 from collections import deque
-from typing import Any, Iterator, List, Optional, Tuple
+from typing import Any, Iterator, List, Optional, Sequence, Tuple
 
 from grpc import insecure_channel
 
@@ -8,18 +8,32 @@ from .proto import clouddrive_pb2_grpc
 from google.protobuf import empty_pb2
 
 
+DEFAULT_CHANNEL_OPTIONS: Sequence[Tuple[str, Any]] = (
+    ("grpc.keepalive_time_ms", 30000),
+    ("grpc.keepalive_timeout_ms", 10000),
+    ("grpc.keepalive_permit_without_calls", True),
+    ("grpc.http2.max_pings_without_data", 0),
+)
+
+
 class CloudDriveClient:
     """
     CloudDrive gRPC 客户端
     """
 
-    def __init__(self, address: str) -> None:
+    def __init__(
+        self,
+        address: str,
+        options: Optional[Sequence[Tuple[str, Any]]] = None,
+    ) -> None:
         """
         初始化 CloudDrive 客户端。
 
         :param address: 服务器地址
+        :param options: gRPC channel options
         """
-        self.channel = insecure_channel(address)
+        channel_options = options if options is not None else DEFAULT_CHANNEL_OPTIONS
+        self.channel = insecure_channel(address, options=channel_options)
         self.stub = clouddrive_pb2_grpc.CloudDriveFileSrvStub(self.channel)
         self.jwt_token: Optional[str] = None
 
