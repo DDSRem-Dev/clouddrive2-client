@@ -565,6 +565,96 @@ class CloudDriveClient:
         metadata = self._create_authorized_metadata()
         return self.stub.GetUploadFileList(request, metadata=metadata)
 
+    @staticmethod
+    def upload_terminal_enums() -> tuple[set[int], Optional[int]]:
+        """
+        获取上传任务终态枚举集合与 Finish 值。
+
+        用于轮询 GetUploadFileList 时判断任务是否进入终态。
+
+        :return: (terminal_statuses, finish_value)
+        """
+        info_cls = getattr(clouddrive_pb2, "UploadFileInfo", None)
+        if info_cls is None:
+            return set(), None
+        terminal: set[int] = set()
+        for name in (
+            "Finish",
+            "Error",
+            "FatalError",
+            "Cancelled",
+            "Skipped",
+            "Ignored",
+        ):
+            value = getattr(info_cls, name, None)
+            if value is not None:
+                try:
+                    terminal.add(int(value))
+                except (TypeError, ValueError, OverflowError):
+                    pass
+        finish = getattr(info_cls, "Finish", None)
+        try:
+            finish_value = int(finish) if finish is not None else None
+        except (TypeError, ValueError, OverflowError):
+            finish_value = None
+        return terminal, finish_value
+
+    def create_file(self, parent_path: str, file_name: str) -> int:
+        """
+        创建文件并返回句柄 fileHandle。
+
+        :param parent_path: 父目录路径
+        :param file_name: 文件名
+        :return: fileHandle（<=0 表示失败）
+        """
+        request = clouddrive_pb2.CreateFileRequest(
+            parentPath=parent_path, fileName=file_name
+        )
+        metadata = self._create_authorized_metadata()
+        resp = self.stub.CreateFile(request, metadata=metadata)
+        return int(getattr(resp, "fileHandle", 0) or 0)
+
+    def write_to_file(
+        self,
+        file_handle: int,
+        start_pos: int,
+        data: bytes,
+        close_file: bool = False,
+    ) -> int:
+        """
+        向已打开的文件句柄写入数据块。
+
+        :param file_handle: CreateFile 返回的 fileHandle
+        :param start_pos: 写入偏移
+        :param data: 数据块
+        :param close_file: 是否在本次写入后关闭（通常为 False，最后再 CloseFile）
+        :return: bytesWritten（写入字节数）
+        """
+        request = clouddrive_pb2.WriteFileRequest(
+            fileHandle=int(file_handle),
+            startPos=int(start_pos),
+            length=len(data),
+            buffer=data,
+            closeFile=bool(close_file),
+        )
+        metadata = self._create_authorized_metadata()
+        resp = self.stub.WriteToFile(request, metadata=metadata)
+        return int(getattr(resp, "bytesWritten", len(data)) or 0)
+
+    def close_file(self, file_handle: int) -> bool:
+        """
+        关闭已打开的文件句柄。
+
+        :param file_handle: CreateFile 返回的 fileHandle
+        :return: 成功返回 True，失败返回 False（若响应无 success 字段则视为 True）
+        """
+        request = clouddrive_pb2.CloseFileRequest(fileHandle=int(file_handle))
+        metadata = self._create_authorized_metadata()
+        resp = self.stub.CloseFile(request, metadata=metadata)
+        if hasattr(resp, "success"):
+            return bool(getattr(resp, "success"))
+        return True
+
     def cancel_all_upload_files(self) -> None:
         """
         取消所有上传任务。
