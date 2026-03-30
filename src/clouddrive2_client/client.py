@@ -72,6 +72,15 @@ class CloudDriveClient:
         """
         return self.stub.GetSystemInfo(empty_pb2.Empty())
 
+    def get_service_capabilities(self):
+        """
+        获取服务能力（是否支持重启/更新等）。
+
+        :return: ServiceCapabilities
+        """
+        metadata = self._create_authorized_metadata()
+        return self.stub.GetServiceCapabilities(empty_pb2.Empty(), metadata=metadata)
+
     def get_sub_files(self, path: str, force_refresh: bool = False) -> Iterator:
         """
         列出目录中的文件。
@@ -88,12 +97,76 @@ class CloudDriveClient:
             for f in response.subFiles:
                 yield f
 
+    def set_folder_disk_cache(
+        self,
+        path: str,
+        max_file_size: int = 0,
+        min_file_size: int = 0,
+        extension_filter_mode: int = 0,
+        extensions: Optional[List[str]] = None,
+        enabled: bool = True,
+    ) -> None:
+        """
+        为指定目录设置磁盘缓存规则。
+
+        :param path: 目录路径
+        :param max_file_size: 缓存最大文件大小（字节，0 表示不限制）
+        :param min_file_size: 缓存最小文件大小（字节，0 表示不限制）
+        :param extension_filter_mode: 扩展名过滤模式（0=禁用，1=仅包含，2=排除）
+        :param extensions: 扩展名列表（不带点，建议小写）
+        :param enabled: 是否启用该目录缓存规则
+        """
+        request = clouddrive_pb2.SetFolderDiskCacheRequest(
+            path=path,
+            maxFileSize=int(max_file_size),
+            minFileSize=int(min_file_size),
+            extensionFilterMode=int(extension_filter_mode),
+            extensions=extensions or [],
+            enabled=bool(enabled),
+        )
+        metadata = self._create_authorized_metadata()
+        self.stub.SetFolderDiskCache(request, metadata=metadata)
+
+    def remove_folder_disk_cache(self, path: str) -> None:
+        """
+        移除指定目录的磁盘缓存规则。
+
+        :param path: 目录路径
+        """
+        request = clouddrive_pb2.FileRequest(path=path)
+        metadata = self._create_authorized_metadata()
+        self.stub.RemoveFolderDiskCache(request, metadata=metadata)
+
+    def list_disk_cache_folders(self):
+        """
+        列出所有已配置磁盘缓存规则的目录。
+
+        :return: ListDiskCacheFoldersReply
+        """
+        metadata = self._create_authorized_metadata()
+        return self.stub.ListDiskCacheFolders(empty_pb2.Empty(), metadata=metadata)
+
+    def local_create_folder(self, parent_folder: str, folder_name: str):
+        """
+        在本地文件系统指定目录下创建子目录。
+
+        :param parent_folder: 本地父目录路径
+        :param folder_name: 要创建的目录名
+        :return: LocalCreateFolderResult
+        """
+        request = clouddrive_pb2.LocalCreateFolderRequest(
+            parentFolder=parent_folder, folderName=folder_name
+        )
+        metadata = self._create_authorized_metadata()
+        return self.stub.LocalCreateFolder(request, metadata=metadata)
+
     def get_search_results(
         self,
         path: str,
         search_for: str,
         force_refresh: bool = False,
         fuzzy_match: bool = False,
+        content_search: bool = False,
     ) -> Iterator:
         """
         在指定路径下搜索文件或目录。
@@ -102,6 +175,7 @@ class CloudDriveClient:
         :param search_for: 搜索关键词
         :param force_refresh: 是否强制刷新缓存
         :param fuzzy_match: 是否模糊匹配
+        :param content_search: 是否启用内容检索（云端需支持）
         :yield: CloudDriveFile
         """
         request = clouddrive_pb2.SearchRequest(
@@ -109,6 +183,7 @@ class CloudDriveClient:
             searchFor=search_for,
             forceRefresh=force_refresh,
             fuzzyMatch=fuzzy_match,
+            contentSearch=content_search,
         )
         metadata = self._create_authorized_metadata()
         for response in self.stub.GetSearchResults(request, metadata=metadata):
